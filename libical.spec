@@ -1,6 +1,6 @@
 Name:		libical
 Version:	0.43
-Release:	5.1%{?dist}
+Release:	6%{?dist}
 Summary:	Reference implementation of the iCalendar data type and serialization format
 Summary(pl):	Implementacja formatu iCalendar
 
@@ -14,6 +14,8 @@ Patch0:		%{name}-%{version}-implicit-pointer-conversion.patch
 Patch1:		%{name}-%{version}-makefile.patch
 # https://bugzilla.redhat.com/484091
 Patch2:		%{name}-%{version}-cflags.patch
+# https://bugzilla.redhat.com/664332
+Patch3:		%{name}-%{version}-fix-ical-errors-are-fatal-checks.patch
 
 BuildRoot:	%(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 
@@ -51,6 +53,7 @@ korzystających z libical.
 %patch0 -p1
 %patch1 -p1
 %patch2 -p1
+%patch3 -p1
 
 %build
 %configure --disable-static --enable-reentrant --with-backtrace
@@ -107,6 +110,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_includedir}/%{name}/vobject.h
 
 %changelog
+* Mon Oct 8 2012 Matthew Barnes <mbarnes@redhat.com> - 0.43-6
+- Add patch for RH bug #664332 (fix ICAL_ERRORS_ARE_FATAL checks).
+
 * Mon Nov 30 2009 Dennis Gregorovic <dgregor@redhat.com> - 0.43-5.1
 - Rebuilt for RHEL 6
 
