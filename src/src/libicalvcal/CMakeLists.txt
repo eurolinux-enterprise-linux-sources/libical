@@ -1,9 +1,11 @@
+add_definitions(-Dlibical_vcal_EXPORTS)
+
 include_directories(
   ${CMAKE_BINARY_DIR}
-  ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR}/src
-  ${CMAKE_SOURCE_DIR}/src/libicalss ${CMAKE_BINARY_DIR}/src/libicalss
-  ${CMAKE_SOURCE_DIR}/src/libical ${CMAKE_BINARY_DIR}/src/libical
-  ${CMAKE_SOURCE_DIR}/src/libicalvcal ${CMAKE_BINARY_DIR}/src/libicalvcal
+  ${CMAKE_BINARY_DIR}/src
+  ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_BINARY_DIR}/src/libical
+  ${CMAKE_SOURCE_DIR}/src/libical
 )
 
 #these are generated sources, but we keep them in the repo
@@ -12,9 +14,9 @@ set(icalvcal_LIB_DEVSRCS vcc.c)
 ########### next target ###############
 
 set(icalvcal_LIB_SRCS
+  libical_vcal_export.h
   icalvcal.h
   icalvcal.c
-  port.h
   vcc.h
   vobject.h
   vobject.c
@@ -23,26 +25,19 @@ set(icalvcal_LIB_SRCS
   ${icalvcal_LIB_DEVSRCS}
 )
 
-if(MSVC)
-  list(APPEND icalvcal_LIB_SRCS ../icalvcal.def)
-endif()
-
 add_library(icalvcal ${LIBRARY_TYPE} ${icalvcal_LIB_SRCS})
-if(NOT SHARED_ONLY)
-  add_library(icalvcal-static STATIC ${icalvcal_LIB_SRCS})
-endif()
-
 add_dependencies(icalvcal ical-header)
 if(NOT SHARED_ONLY)
+  add_library(icalvcal-static STATIC ${icalvcal_LIB_SRCS})
   add_dependencies(icalvcal-static ical-header)
 endif()
 
 target_link_libraries(icalvcal ical)
 
 if(MSVC)
-  set_target_properties(icalvcal PROPERTIES OUTPUT_NAME "libicalvcal")
+  set_target_properties(icalvcal PROPERTIES PREFIX "lib")
   if(NOT SHARED_ONLY)
-    set_target_properties(icalvcal-static PROPERTIES OUTPUT_NAME "libicalvcal-static")
+    set_target_properties(icalvcal-static PROPERTIES PREFIX "lib")
   endif()
 else()
   if(NOT SHARED_ONLY)
@@ -74,7 +69,11 @@ endif()
 ########### install files ###############
 
 install(FILES
-  icalvcal.h port.h vcc.h vobject.h vcaltmp.h
+  icalvcal.h
+  vcaltmp.h
+  vcc.h
+  vobject.h
+  libical_vcal_export.h
   DESTINATION
   ${INCLUDE_INSTALL_DIR}/libical
 )

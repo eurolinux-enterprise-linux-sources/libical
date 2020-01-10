@@ -1,0 +1,24 @@
+diff -up libical-3.0.3/CMakeLists.txt.cmake-version libical-3.0.3/CMakeLists.txt
+--- libical-3.0.3/CMakeLists.txt.cmake-version	2018-02-27 16:34:25.000000000 +0100
++++ libical-3.0.3/CMakeLists.txt	2018-05-31 16:31:14.858002781 +0200
+@@ -70,7 +70,7 @@
+ #  Build with the thread sanitizer (requires gcc or clang)
+ #
+ 
+-cmake_minimum_required(VERSION 3.1.0) #first line, to shutup a cygwin warning
++cmake_minimum_required(VERSION 2.8.0) #first line, to shutup a cygwin warning
+ project(libical C CXX)
+ 
+ cmake_policy(SET CMP0003 NEW)
+diff -up libical-3.0.3/cmake/modules/GObjectIntrospectionMacros.cmake.cmake-version libical-3.0.3/cmake/modules/GObjectIntrospectionMacros.cmake
+--- libical-3.0.3/cmake/modules/GObjectIntrospectionMacros.cmake.cmake-version	2018-05-31 16:59:07.730979648 +0200
++++ libical-3.0.3/cmake/modules/GObjectIntrospectionMacros.cmake	2018-05-31 17:03:01.110976420 +0200
+@@ -50,7 +50,7 @@ macro(gir_add_introspections introspecti
+     set(_gir_libtool "--no-libtool")
+ 
+     add_custom_command(
+-      COMMAND ${CMAKE_COMMAND} -E env "CC='${CMAKE_C_COMPILER}'"
++      COMMAND
+               ${GObjectIntrospection_SCANNER}
+               ${GObjectIntrospection_SCANNER_ARGS}
+               --namespace=${_gir_namespace}

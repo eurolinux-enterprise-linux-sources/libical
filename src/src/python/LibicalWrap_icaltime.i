@@ -40,10 +40,6 @@
     int day_of_year() { return icaltime_day_of_year(*($self)); }
     int day_of_week() { return icaltime_day_of_week(*($self)); }
 
-    /** Return the day of the year for the Sunday of the week that the
-       given time is within. */
-    /* int start_doy_of_week() { return icaltime_start_doy_of_week(*($self)); } */
-
     /** Return the day of the year for the first day of the week that the
        given time is within. */
     int start_doy_week(int fdow) {
@@ -168,7 +164,6 @@ def icaltimetype_from_datetime(dt):
     if dt.tzinfo:
         # TODO: convert to the right timezone, assume for now we are UTC
         tt.zone = 0
-        tt.is_utc = True
     tt.is_date = False
     tt.isdaylight = False
     
