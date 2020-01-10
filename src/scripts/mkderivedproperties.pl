@@ -28,9 +28,9 @@ if ($opt_i) {
     } else {
       print;
    }
- 
-  }    
- 
+
+  }
+
 }
 
 sub fudge_data {
@@ -53,7 +53,7 @@ sub fudge_data {
 
   return ($uc,$lc,$lcvalue,$ucvalue,$type);
 
-}  
+}
 
 sub insert_code {
 
@@ -61,73 +61,80 @@ sub insert_code {
 if($opt_c){
 
 
-  my @props = sort keys %propmap;
+  my @props = sort {$propmap{$a}->{"kindEnum"} <=> $propmap{$b}->{"kindEnum"}} keys %propmap;
   my $count = scalar(@props);
-  
+
 
   print "static const struct icalproperty_map property_map[$count] = {\n";
-  
+
   foreach $prop (@props) {
-    
+
     next if !$prop;
-    
+
     next if $prop eq 'NO';
-    
+
     my ($uc,$lc,$lcvalue,$ucvalue,$type) = fudge_data($prop);
-    
+
     print "{ICAL_${uc}_PROPERTY,\"$prop\",ICAL_${ucvalue}_VALUE},\n";
-    
+
   }
-  
+
   $prop = "NO";
-  
+
   my ($uc,$lc,$lcvalue,$ucvalue,$type) = fudge_data($prop);
-  
+
   print "{ICAL_${uc}_PROPERTY,\"\",ICAL_NO_VALUE}};\n\n";
 
-  $idx = 10000;
   $count = 1;
-  my $out = "";
+  my %lines;
 
   foreach $value (sort keys %valuemap) {
-    
-    next if !$value;    
+
+    next if !$value;
     next if $value eq 'NO' or $prop eq 'ANY';
 
-    my $ucv = join("",map {uc(lc($_));}  split(/-/,$value));    
+    my $ucv = join("",map {uc(lc($_));}  split(/-/,$value));
     my @enums = @{$valuemap{$value}->{'enums'}};
 
     if(@enums){
 
       my ($c_autogen,$c_type) = @{$valuemap{$value}->{'C'}};
-      
-      unshift(@enums,"X");
-      push(@enums,"NONE");
 
       foreach $e (@enums) {
 
+	$e =~ /([a-zA-Z0-9\-]+)=?([0-9]+)?/;
+	$e = $1;
+	if ($2) {
+	    $idx = $2;
+	} else {
+	    $idx++;
+	}
+
 	my $uce = join("",map {uc(lc($_));}  split(/-/,$e));
-	
+
 	if($e ne "X" and $e ne "NONE"){
 	  $str = $e;
 	} else {
 	  $str = "";
 	}
 
-	$out.="    {ICAL_${ucv}_PROPERTY,ICAL_${ucv}_${uce},\"$str\" }, /*$idx*/\n";
+    # Place each property into a hash based on the index specified in value-types.csv
+    # The lines are printed so they're in the same order as the indices
+    $lines{$idx} = "    {ICAL_${ucv}_PROPERTY,ICAL_${ucv}_${uce},\"$str\" }, /*$idx*/\n";
 
-	$idx++;
 	$count++;
       }
-      
+
     }
   }
 
   $count++;
   print "static const struct icalproperty_enum_map enum_map[$count] = {\n";
-  print $out;
+  foreach $line (sort keys %lines) {
+    print $lines{$line};
+  }
   print "    {ICAL_NO_PROPERTY,0,\"\"}\n};\n\n";
-  
+
 
 
 }
@@ -136,19 +143,23 @@ if($opt_c){
 if($opt_h){
 
   # Create the property enumerations list
-  print "typedef enum icalproperty_kind {\n    ICAL_ANY_PROPERTY = 0,\n";
+  my $enumConst = $propmap{'ANY'}->{"kindEnum"};
+  print "typedef enum icalproperty_kind {\n    ICAL_ANY_PROPERTY = ".$enumConst.",\n";
   foreach $prop (sort keys %propmap) {
-    
+
     next if !$prop;
-    
+
     next if $prop eq 'NO' or $prop eq 'ANY';
-    
+
     my ($uc,$lc,$lcvalue,$ucvalue,$type) = fudge_data($prop);
-    
-    print "    ICAL_${uc}_PROPERTY, \n";
-    
-  }  
-  print "    ICAL_NO_PROPERTY\n} icalproperty_kind;\n\n";
+
+    $enumConst = $propmap{$prop}->{"kindEnum"};
+
+    print "    ICAL_${uc}_PROPERTY = ".$enumConst.", \n";
+
+  }
+  $enumConst = $propmap{'NO'}->{"kindEnum"};
+  print "    ICAL_NO_PROPERTY = ".$enumConst."\n} icalproperty_kind;\n\n";
 
 
 }
@@ -162,14 +173,14 @@ foreach $prop (sort keys %propmap) {
 
   my ($uc,$lc,$lcvalue,$ucvalue,$type) = fudge_data($prop);
 
-  
+
   my $pointer_check;
   if ($type =~ /\*/){
     $pointer_check = "icalerror_check_arg_rz( (v!=0),\"v\");\n" if $type =~ /\*/;
   } elsif ( $type eq "void" ){
     $pointer_check = "icalerror_check_arg_rv( (v!=0),\"v\");\n" if $type =~ /\*/;
 
-  }    
+  }
 
   my $set_pointer_check = "icalerror_check_arg_rv( (v!=0),\"v\");\n" if $type =~ /\*/;
 
@@ -240,12 +251,12 @@ $type icalproperty_get_${lc}(const icalproperty* prop){
 #ifndef _MSC_VER
         /*
 	 * Code by dirk\@objectpark.net:
-	 * Set the time zone manually. I am really puzzled that 
-	 * it doesnot work automatically like in the other functions 
+	 * Set the time zone manually. I am really puzzled that
+	 * it doesnot work automatically like in the other functions
 	 * like icalproperty_get_dtstart().
 	 */
 	itt = icalvalue_get_datetime(icalproperty_get_value(prop));
-	param = icalproperty_get_first_parameter(prop, ICAL_TZID_PARAMETER);
+	param = icalproperty_get_first_parameter((icalproperty *)prop, ICAL_TZID_PARAMETER);
 	if (param) {
 	        zone = icaltimezone_get_builtin_timezone(icalparameter_get_tzid(param));
 		icaltime_set_timezone(&itt, zone);
@@ -272,13 +283,13 @@ EOM
 icalproperty* icalproperty_new_${lc}($type v);\
 void icalproperty_set_${lc}(icalproperty* prop, $type v);\
 $type icalproperty_get_${lc}(const icalproperty* prop);";
-  
+
 
 if ($include_vanew){
   print "icalproperty* icalproperty_vanew_${lc}($type v, ...);\n";
 }
 
-} 
+}
 
 
 } # This brace terminates the main loop

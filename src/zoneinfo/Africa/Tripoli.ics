@@ -2,7 +2,7 @@ BEGIN:VCALENDAR
 PRODID:-//citadel.org//NONSGML Citadel calendar//EN
 VERSION:2.0
 BEGIN:VTIMEZONE
-TZID:/citadel.org/20070227_1/Africa/Tripoli
+TZID:/citadel.org/20140920_3/Africa/Tripoli
 X-LIC-LOCATION:Africa/Tripoli
 BEGIN:STANDARD
 TZOFFSETFROM:+0200

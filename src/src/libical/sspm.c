@@ -442,7 +442,7 @@ char* sspm_lowercase(char* str)
     }
     new = sspm_strdup(str);
     for(p = new; *p!=0; p++){
-	*p = tolower(*p);
+	*p = tolower((int)*p);
     }
 
     return new;
@@ -495,7 +495,7 @@ const char* sspm_major_type_string(enum sspm_major_type type)
 {
     int i;
 
-    for (i=0; major_content_type_map[i].type !=  SSPM_UNKNOWN_MINOR_TYPE; 
+    for (i=0; major_content_type_map[i].type !=  SSPM_UNKNOWN_MAJOR_TYPE; 
 	 i++){
 
 	if(type == major_content_type_map[i].type){
@@ -702,8 +702,7 @@ void* sspm_make_part(struct mime_impl *impl,
 		break;
 	    }
 	    
-	    if(strncmp((line+2),parent_header->boundary,
-		       sizeof(parent_header->boundary)) == 0){
+	    if(strcmp((line+2),parent_header->boundary) == 0){
 		*end_part = action.end_part(part);
 
 		if(sspm_is_mime_boundary(line)){
@@ -808,8 +807,7 @@ void* sspm_make_multipart_subpart(struct mime_impl *impl,
 
 		/* Check if it is the right boundary */
 		if(!sspm_is_mime_terminating_boundary(line) &&
-		   strncmp((line+2),parent_header->boundary, 
-			   sizeof(parent_header->boundary)) 
+		   strcmp((line+2),parent_header->boundary)
 		   == 0){
 		    /* The +2 in strncmp skips over the leading "--" */
 		    
@@ -974,7 +972,7 @@ void sspm_read_header(struct mime_impl *impl,struct sspm_header *header)
 	    }
 	    
 	    case HEADER_CONTINUATION: {
-		char* last_line, *end;
+		char* last_line;
 		char *buf_start;
 
 		if(current_line < 0){
@@ -985,9 +983,6 @@ void sspm_read_header(struct mime_impl *impl,struct sspm_header *header)
 		}
 
 		last_line = header_lines[current_line];
-		end = (char*) ( (size_t)strlen(last_line)+
-				      (size_t)last_line);
-		
 		impl->state = IN_HEADER;
 
 		
@@ -1037,7 +1032,6 @@ int sspm_parse_mime(struct sspm_part *parts,
 {
     struct mime_impl impl;
     struct sspm_header header;
-    void *part;
     int i;
     (void)first_header;
 
@@ -1067,8 +1061,7 @@ int sspm_parse_mime(struct sspm_part *parts,
 	child_header = &(impl.parts[impl.part_no].header);
 	
 	sspm_store_part(&impl,header,impl.level,0,0);
-
-	part = sspm_make_multipart_part(&impl,child_header);
+	sspm_make_multipart_part(&impl,child_header);
 
     } else {
 	void *part;
@@ -1155,13 +1148,13 @@ char *decode_quoted_printable(char *dest,
 		continue;
 	    }
 
-	    cc  = isdigit(*src) ? (*src - '0') : (*src - 55);
+	    cc  = isdigit((int)*src) ? (*src - '0') : (*src - 55);
 	    cc *= 0x10;
 	    src++; 
 	    if (!*src) {
 		break;
 	    }
-	    cc += isdigit(*src) ? (*src - '0') : (*src - 55);
+	    cc += isdigit((int)*src) ? (*src - '0') : (*src - 55);
 
 	    *dest = cc;
 

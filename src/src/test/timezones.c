@@ -24,6 +24,8 @@
 
 int main(int argc, char **argv)
 {
+    (void)argc;/*unused*/
+    (void)argv;/*unused*/
     icalarray *timezones = icaltimezone_get_builtin_timezones();
     int i;
     int ret = 0;
@@ -34,7 +36,7 @@ int main(int argc, char **argv)
     icaltimezone *utc_zone = icaltimezone_get_utc_timezone();
 
     /* for all known time zones... */
-    for (i = 0; i < timezones->num_elements; i++) {
+    for (i = 0; i < (int)timezones->num_elements; i++) {
         icaltimezone *zone = icalarray_element_at(timezones, i);
         const char *zone_location = icaltimezone_get_location(zone);
         int day;
@@ -159,14 +161,6 @@ int main(int argc, char **argv)
                total_failed,
                total_okay,
 	       percent_failed);
-	if(!percent_failed) {
-	    ret = 0; /* good enough.
-			we will never be perfect unless our builtin
-			zones are created with vzic's -pure option.
-			Even then, we need to be in-sync with the
-			distro tzdata.. not that likely */
-	    printf(" *** There will always be a small error rate comparing builtin to distro timezones *** \n");
-	}
     }
 
     return ret;

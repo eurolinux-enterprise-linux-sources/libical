@@ -490,7 +490,7 @@ icalproperty* icalcomponent_get_current_property (icalcomponent* component)
 {
    icalerror_check_arg_rz( (component!=0),"component");
 
-   if ((component->property_iterator==0)){
+   if (component->property_iterator==0){
        return 0;
    }
 
@@ -720,6 +720,8 @@ icalcomponent* icalcomponent_get_first_real_component(icalcomponent *c)
 	   kind == ICAL_VTODO_COMPONENT ||
 	   kind == ICAL_VJOURNAL_COMPONENT ||
 	   kind == ICAL_VFREEBUSY_COMPONENT ||
+	   kind == ICAL_VAVAILABILITY_COMPONENT ||
+	   kind == ICAL_VPOLL_COMPONENT ||
 	   kind == ICAL_VQUERY_COMPONENT ||
 	   kind == ICAL_VAGENDA_COMPONENT){
 	    return comp;
@@ -1003,7 +1005,6 @@ void icalcomponent_foreach_recurrence(icalcomponent* comp,
   time_t limit_start, limit_end;
   time_t dtduration;
   icalproperty *rrule, *rdate;
-  struct icaldurationtype dur;
   pvl_elem property_iterator;	/* for saving the iterator */
   
   if (comp == NULL || callback == NULL)
@@ -1071,9 +1072,10 @@ void icalcomponent_foreach_recurrence(icalcomponent* comp,
       if (icaltime_compare(rrule_time, end) > 0)
 	break;
 
-      dur = icaltime_subtract(rrule_time, dtstart);
-
-      recurspan.start = basespan.start + icaldurationtype_as_int(dur);
+      recurspan.start =
+	icaltime_as_timet_with_zone(rrule_time,
+				    rrule_time.zone ? rrule_time.zone :
+				    icaltimezone_get_utc_timezone());
       recurspan.end   = recurspan.start + dtduration;
 
       /** save the iterator ICK! **/
@@ -1106,9 +1108,10 @@ void icalcomponent_foreach_recurrence(icalcomponent* comp,
     if (icaltime_is_null_time(rdate_period.time)) 
       continue;
 
-    dur = icaltime_subtract(rdate_period.time, dtstart);
-
-    recurspan.start = basespan.start + icaldurationtype_as_int(dur);
+    recurspan.start =
+      icaltime_as_timet_with_zone(rdate_period.time,
+				  rdate_period.time.zone ? rdate_period.time.zone :
+				  icaltimezone_get_utc_timezone());
     recurspan.end   = recurspan.start + dtduration;
 
     /** save the iterator ICK! **/
@@ -1316,6 +1319,13 @@ static const struct icalcomponent_kind_map component_map[] =
     { ICAL_XLICMIMEPART_COMPONENT, "X-LIC-MIME-PART" },  
     { ICAL_ANY_COMPONENT, "ANY" },  
     { ICAL_XROOT_COMPONENT, "XROOT" },  
+
+    /* Calendar Availability components */
+    { ICAL_VAVAILABILITY_COMPONENT, "VAVAILABILITY" },
+    { ICAL_XAVAILABLE_COMPONENT, "AVAILABLE" },
+
+    /* Consensus Scheduling component */
+    { ICAL_VPOLL_COMPONENT, "VPOLL" },
 
     /* End of list */
     { ICAL_NO_COMPONENT, "" },
@@ -1635,17 +1645,20 @@ struct icaltimetype icalcomponent_get_dtend(icalcomponent* comp)
     struct icaltimetype	ret = icaltime_null_time();
 
     if ( end_prop != 0) {
-	ret = icalcomponent_get_datetime(comp, end_prop);
-    } else if ( dur_prop != 0) { 
+        ret = icalcomponent_get_datetime(comp, end_prop);
+    } else if ( dur_prop != 0) {
 
-	struct icaltimetype start = 
-	    icalcomponent_get_dtstart(inner);
-	struct icaldurationtype duration = 
-	    icalproperty_get_duration(dur_prop);
+        struct icaltimetype start = icalcomponent_get_dtstart(inner);
+        struct icaldurationtype duration;
+        
+        //extra check to prevent empty durations from crashing
+        if (icalproperty_get_value(dur_prop)) {
+            duration = icalproperty_get_duration(dur_prop);
+        } else {
+            duration = icaldurationtype_null_duration();
+        }
 
-	struct icaltimetype end = icaltime_add(start,duration);
-
-	ret = end;
+        ret = icaltime_add(start,duration);
     }
 
     return ret;
@@ -2098,6 +2111,18 @@ icalcomponent* icalcomponent_new_vquery(void)
 icalcomponent* icalcomponent_new_vreply(void)
 {
     return icalcomponent_new(ICAL_VREPLY_COMPONENT);
+}
+icalcomponent* icalcomponent_new_vavailability(void)
+{
+    return icalcomponent_new(ICAL_VAVAILABILITY_COMPONENT);
+}
+icalcomponent* icalcomponent_new_xavailable(void)
+{
+    return icalcomponent_new(ICAL_XAVAILABLE_COMPONENT);
+}
+icalcomponent* icalcomponent_new_vpoll(void)
+{
+    return icalcomponent_new(ICAL_VPOLL_COMPONENT);
 }
 
 /*
@@ -2609,7 +2634,7 @@ struct icaltimetype icalcomponent_get_due(icalcomponent* comp)
         = icalcomponent_get_first_property(inner, ICAL_DURATION_PROPERTY);
 
     if ( due_prop != 0) {
-        return icalproperty_get_due(due_prop);
+        return icalcomponent_get_datetime(comp, due_prop);
     } else if ( dur_prop != 0) {
 
         struct icaltimetype start =
@@ -2638,6 +2663,8 @@ struct icaltimetype icalcomponent_get_due(icalcomponent* comp)
 
 void icalcomponent_set_due(icalcomponent* comp, struct icaltimetype v)
 {
+    const char *tzid;
+
     icalcomponent *inner = icalcomponent_get_inner(comp);
 
     icalproperty *due_prop
@@ -2663,6 +2690,9 @@ void icalcomponent_set_due(icalcomponent* comp, struct icaltimetype v)
             = icaltime_subtract(due,start);
 
         icalproperty_set_duration(dur_prop,dur);
+    }
 
+    if (due_prop && (tzid = icaltime_get_tzid(v)) != NULL && !icaltime_is_utc(v)) {
+        icalproperty_set_parameter(due_prop, icalparameter_new_tzid(tzid));
     }
 }

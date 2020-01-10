@@ -3,7 +3,7 @@ exec_prefix=@exec_prefix@
 libdir=@libdir@
 includedir=@includedir@
 threadslib=@PTHREAD_LIBS@
-          
+ 
 Name: libical
 Description: An implementation of basic iCAL protocols
 Version: @VERSION@

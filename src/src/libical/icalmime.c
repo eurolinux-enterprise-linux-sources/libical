@@ -119,7 +119,7 @@ void* icalmime_text_end_part(void* part)
 
 void icalmime_text_free_part(void *part)
 {
-    part = part;
+    (void)part;/*unused*/
 }
 
 
@@ -170,7 +170,7 @@ static const struct sspm_action_map icalmime_local_action_map[] =
 
 struct sspm_part* icalmime_make_part(icalcomponent* comp)
 {
-    comp = comp;
+    (void)comp;/*unused*/
     return 0;
 }
 
@@ -190,7 +190,7 @@ icalcomponent* icalmime_parse(char* (*get_string)(char *s, size_t size,
 	return 0;
     }
 
-    memset(parts,0,sizeof(parts));
+    memset(parts,0,sizeof(NUM_PARTS*sizeof(struct sspm_part)));
 
     sspm_parse_mime(parts, 
 		    NUM_PARTS, /* Max parts */
@@ -341,15 +341,11 @@ line between the header and the previous boundary\?";
 	    parent = last;
 	    icalcomponent_add_component(parent,comp);
 
-	    last_level = parts[i].level;
-
 	} else if (parts[i].level < last_level){
 
 	    if (parent) 
 	        parent = icalcomponent_get_parent(parent);
 	    icalcomponent_add_component(parent,comp);
-
-	    last_level = parts[i].level;
 	} else { 
 	    assert(0);
 	}
@@ -380,7 +376,7 @@ int icalmime_test(char* (*get_string)(char *s, size_t size, void *d),
 	return 0;
     }
 
-    memset(parts,0,sizeof(parts));
+    memset(parts,0,sizeof(NUM_PARTS*sizeof(struct sspm_part)));
 
     sspm_parse_mime(parts, 
 		    NUM_PARTS, /* Max parts */

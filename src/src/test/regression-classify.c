@@ -93,7 +93,7 @@ void test_classify(void)
     int error_count = 0;
     /* Open up the two storage files, one for the incomming components, 
        one for the calendar */
-    icalfileset_options options = {O_RDONLY, 0644, 0};
+    icalfileset_options options = {O_RDONLY, 0644, 0, NULL};
     icalset* incoming = icalset_new(ICAL_FILE_SET, TEST_DATADIR "/incoming.ics", &options);
     icalset* cal = icalset_new(ICAL_FILE_SET, TEST_DATADIR "/calendar.ics", &options);
     icalset* f = icalset_new(ICAL_FILE_SET, TEST_DATADIR "/classify.ics", &options);
@@ -126,7 +126,6 @@ void test_classify(void)
 	const char* this_note = get_note(c);
 	const char* expected_result = get_expect(c);
 	const char* actual_result;
-	const char* match_note;
 	char msg[128];
 
 	i++;
@@ -172,7 +171,7 @@ void test_classify(void)
            you would probably switch() on the class.*/
 	class = icalclassify(c,match,"A@example.com");
 	/** eventually test this too.. **/
-        match_note = get_note(match);
+        (void)get_note(match);
 	actual_result = icalproperty_enum_to_string(class);
 	sprintf(msg, "expecting %s", expected_result);
 	is(msg, expected_result, actual_result);

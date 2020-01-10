@@ -281,5 +281,8 @@ icalcomponent* icalcomponent_new_xstandard(void);
 icalcomponent* icalcomponent_new_xdaylight(void);
 icalcomponent* icalcomponent_new_vagenda(void);
 icalcomponent* icalcomponent_new_vquery(void);
+icalcomponent* icalcomponent_new_vavailability(void);
+icalcomponent* icalcomponent_new_xavailable(void);
+icalcomponent* icalcomponent_new_vpoll(void);
 
 #endif /* !ICALCOMPONENT_H */

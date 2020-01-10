@@ -1,14 +1,16 @@
 Summary:	Reference implementation of the iCalendar data type and serialization format
 Name:		libical
-Version:	0.48
-Release:	6%{?dist}
+Version:	1.0.1
+Release:	1%{?dist}
 License:	LGPLv2 or MPLv1.1
 Group:		System Environment/Libraries
 URL:		http://freeassociation.sourceforge.net/
-Source:		http://downloads.sourceforge.net/freeassociation/%{name}-%{version}.tar.gz
-Requires:	tzdata
+Source:		https://github.com/%{name}/%{name}/archive/v%{version}/%{name}-%{version}.tar.gz
+Patch0:		libical-1.0-avoid-putenv.patch
+
 BuildRequires:	bison, byacc, flex
-BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+BuildRequires:	cmake
+Requires:	tzdata
 
 %description
 Reference implementation of the iCalendar data type and serialization format
@@ -17,7 +19,7 @@ used in dozens of calendaring and scheduling products.
 %package devel
 Summary:	Development files for libical
 Group:		Development/Libraries
-Requires:	%{name}%{?_isa} = %{version}-%{release}, pkgconfig
+Requires:	%{name}%{?_isa} = %{version}-%{release}
 
 %description devel
 The libical-devel package contains libraries and header files for developing 
@@ -25,50 +27,49 @@ applications that use libical.
 
 %prep
 %setup -q
+%patch0 -p1 -b .avoid-putenv
 
 %build
-%configure --disable-static --enable-reentrant --with-backtrace
-make %{?_smp_mflags}
+mkdir -p %{_target_platform}
+pushd %{_target_platform}
+%{cmake} ..
+popd
+
+make %{?_smp_mflags} -C %{_target_platform}
 
 %install
-rm -rf $RPM_BUILD_ROOT
-make DESTDIR=$RPM_BUILD_ROOT INSTALL='install -p' install
+make install/fast DESTDIR=%{buildroot} -C %{_target_platform}
 
-# Don't install any libtool .la files
-rm -f $RPM_BUILD_ROOT%{_libdir}/%{name}*.la
+# omit static libs
+rm -fv %{buildroot}%{_libdir}/lib*.a
 
-%clean
-rm -rf $RPM_BUILD_ROOT
+%check
+make test ARGS="-V" -C %{_target_platform}
 
 %post -p /sbin/ldconfig
 
 %postun -p /sbin/ldconfig
 
 %files
-%defattr(-,root,root,-)
-%doc LICENSE README THANKS
-%{_libdir}/%{name}.so.*
-%{_libdir}/libicalss.so.*
-%{_libdir}/libicalvcal.so.*
+%doc LICENSE ReadMe.txt THANKS
+%{_libdir}/libical.so.1*
+%{_libdir}/libicalss.so.1*
+%{_libdir}/libicalvcal.so.1*
 
 %files devel
-%defattr(-,root,root,-)
 %doc doc/UsingLibical.txt
 %{_includedir}/ical.h
-%{_libdir}/%{name}.so
+%{_libdir}/libical.so
 %{_libdir}/libicalss.so
 %{_libdir}/libicalvcal.so
 %{_libdir}/pkgconfig/libical.pc
-%dir %{_includedir}/%{name}
-%{_includedir}/%{name}/ical*.h
-%{_includedir}/%{name}/pvl.h
-%{_includedir}/%{name}/sspm.h
-%{_includedir}/%{name}/port.h
-%{_includedir}/%{name}/vcaltmp.h
-%{_includedir}/%{name}/vcc.h
-%{_includedir}/%{name}/vobject.h
+%{_libdir}/cmake/LibIcal/
+%{_includedir}/libical/
 
 %changelog
+* Wed Jul 08 2015 Milan Crha <mcrha@redhat.com> - 1.0.1-1
+- Update to 1.0.1
+
 * Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 0.48-6
 - Mass rebuild 2014-01-24
 

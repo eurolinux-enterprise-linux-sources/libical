@@ -83,14 +83,15 @@ static time_t make_time(struct tm *tm, int tzm)
 
   static int days[] = { -1, 30, 58, 89, 119, 150, 180, 211, 242, 272, 303, 333, 364 };
 
-  /* check that year specification within range */
-
-  if (tm->tm_year < 70 || tm->tm_year > 138)
-    return((time_t) -1);
-
   /* check that month specification within range */
 
   if (tm->tm_mon < 0 || tm->tm_mon > 11)
+    return((time_t) -1);
+
+#if (SIZEOF_TIME_T == 4)
+  /* check that year specification within range */
+
+  if (tm->tm_year < 70 || tm->tm_year > 138)
     return((time_t) -1);
 
   /* check for upper bound of Jan 17, 2038 (to avoid possibility of
@@ -102,6 +103,7 @@ static time_t make_time(struct tm *tm, int tzm)
     else if (tm->tm_mday > 17)
       return((time_t) -1);
   }
+#endif /* SIZEOF_TIME_T */
 
   /*
    *  calculate elapsed days since start of the epoch (midnight Jan
@@ -586,7 +588,7 @@ icaltime_is_leap_year (const int year)
 
 
 int
-ycaltime_days_in_year (const int year)
+icaltime_days_in_year (const int year)
 {
 	if (icaltime_is_leap_year (year))
 		return 366;
@@ -1077,8 +1079,14 @@ struct icaltimetype icaltime_convert_to_zone(const struct icaltimetype tt,
 	}
 
 	/* If it's a floating time we don't want to adjust the time */
-	if (tt.zone != NULL) {
-		icaltimezone_convert_time(&ret, (icaltimezone *)tt.zone, zone);
+	if (tt.zone != NULL || tt.is_utc) {
+        icaltimezone *from_zone = (icaltimezone *)tt.zone;
+        
+        if (!from_zone) {
+            from_zone = icaltimezone_get_utc_timezone();
+        }
+        
+		icaltimezone_convert_time(&ret, from_zone, zone);
 	}
 
 	ret.zone = zone;
@@ -1111,7 +1119,7 @@ icaltime_get_tzid(const struct icaltimetype t) {
  *
  *	Force the icaltime to be interpreted relative to another timezone.
  *	If you need to do timezone conversion, applying offset adjustments,
- *	then you should use icaltime_convert_to_timezone instead.
+ *	then you should use icaltime_convert_to_zone instead.
  */
 struct icaltimetype
 icaltime_set_timezone(struct icaltimetype *t, const icaltimezone *zone) {

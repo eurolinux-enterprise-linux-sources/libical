@@ -313,16 +313,16 @@ void create_new_component_with_va_args()
 		    ICAL_XDAYLIGHT_COMPONENT,
 		    icalproperty_new_dtstart(atime),
 		    icalproperty_new_rdate(rtime),
-		    icalproperty_new_tzoffsetfrom(-4.0),
-		    icalproperty_new_tzoffsetto(-5.0),
+		    icalproperty_new_tzoffsetfrom(-4),
+		    icalproperty_new_tzoffsetto(-5),
 		    icalproperty_new_tzname("EST"),
 		    (void *)0),
 		icalcomponent_vanew(
 		    ICAL_XSTANDARD_COMPONENT,
 		    icalproperty_new_dtstart(atime),
 		    icalproperty_new_rdate(rtime),
-		    icalproperty_new_tzoffsetfrom(-5.0),
-		    icalproperty_new_tzoffsetto(-4.0),
+		    icalproperty_new_tzoffsetfrom(-5),
+		    icalproperty_new_tzoffsetto(-4),
 		    icalproperty_new_tzname("EST"),
 		    (void *)0),
 		(void *)0),
@@ -417,8 +417,8 @@ void test_icalcomponent_get_span()
 
     span = icalcomponent_get_span(c);
     if (VERBOSE) print_span(tnum++,span);
-#if ADD_TESTS_REQUIRING_INVESTIGATION
-    int_is("America/Los_Angeles", span.start, 973407600);
+#if ADD_TESTS_BROKEN_BUILTIN_TZDATA
+    int_is("America/Los_Angeles", span.start, 973350000);
 #endif
     icalcomponent_free(c);
 
@@ -454,10 +454,9 @@ void test_icalcomponent_get_span()
 
     span = icalcomponent_get_span(c);
     if (VERBOSE) print_span(tnum++,span);
-#if ADD_TESTS_REQUIRING_INVESTIGATION
-    int_is("America/New_York", span.start, 973396800);
+#if ADD_TESTS_BROKEN_BUILTIN_TZDATA
+    int_is("America/New_York", span.start, 973360800);
 #endif
-
     icalcomponent_free(c);
 
     /** test 4
@@ -478,10 +477,9 @@ void test_icalcomponent_get_span()
 
     span = icalcomponent_get_span(c);
     if (VERBOSE) print_span(tnum++,span);
-#if ADD_TESTS_REQUIRING_INVESTIGATION
-    int_is("America/New_York", span.start, 973396800);
+#if ADD_TESTS_BROKEN_BUILTIN_TZDATA
+    int_is("America/New_York", span.start, 973360800);
 #endif
-    
     icalcomponent_free(c);
 
     /** test 5
@@ -502,10 +500,9 @@ void test_icalcomponent_get_span()
 
     span = icalcomponent_get_span(c);
     if (VERBOSE) print_span(tnum++,span);
-#if ADD_TESTS_REQUIRING_INVESTIGATION
-    int_is("America/Los_Angeles w/ duration", span.end, 973409400);
+#if ADD_TESTS_BROKEN_BUILTIN_TZDATA
+    int_is("America/Los_Angeles w/ duration", span.end, 973351800);
 #endif
-
     icalcomponent_free(c);
 
     icalerror_errors_are_fatal = 0;

@@ -90,9 +90,15 @@ const char *ical_tzid_prefix =	"/freeassociation.sourceforge.net/";
     the timezone changes. */
 #define ICALTIMEZONE_EXTRA_COVERAGE	5
 
-/** This is the maximum year we will expand to. time_t values only go up to
-    somewhere around 2037. */
-#define ICALTIMEZONE_MAX_YEAR		2035
+#if (SIZEOF_TIME_T > 4)
+/** Arbitrarily go up to 1000th anniversary of Gregorian calendar, since
+    64-bit time_t values get us up to the tm_year limit of 2+ billion years. */
+#define ICALTIMEZONE_MAX_YEAR		2582
+#else
+/** This is the maximum year we will expand to, since 32-bit time_t values
+    only go up to the start of 2038. */
+#define ICALTIMEZONE_MAX_YEAR		2037
+#endif
 
 typedef struct _icaltimezonechange	icaltimezonechange;
 
@@ -125,6 +131,11 @@ static icalarray *builtin_timezones = NULL;
 static icaltimezone utc_timezone = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 static char* zone_files_directory = NULL;
+#ifdef USE_BUILTIN_TZDATA
+static int use_builtin_tzdata = 1;
+#else
+static int use_builtin_tzdata = 0;
+#endif
 
 static void  icaltimezone_reset			(icaltimezone *zone);
 static char* icaltimezone_get_location_from_vtimezone (icalcomponent *component);
@@ -165,14 +176,13 @@ static void  icaltimezone_init_builtin_timezones(void);
 
 static void  icaltimezone_parse_zone_tab	(void);
 
-#ifdef USE_BUILTIN_TZDATA
 static char* icaltimezone_load_get_line_fn	(char		*s,
 						 size_t		 size,
 						 void		*data);
-#endif
 
 static void  format_utc_offset			(int		 utc_offset,
-						 char		*buffer);
+						 char		*buffer,
+                                                 size_t          buffer_size);
 static const char* get_zone_directory(void);
 
 /** Creates a new icaltimezone. */
@@ -276,7 +286,7 @@ icaltimezone_get_vtimezone_properties	(icaltimezone *zone,
 					 icalcomponent	*component)
 {
     icalproperty *prop;
-    const char *tzid, *tzname;
+    const char *tzid;
  
     prop = icalcomponent_get_first_property (component, ICAL_TZID_PROPERTY);
     if (!prop)
@@ -528,7 +538,7 @@ icaltimezone_expand_vtimezone		(icalcomponent	*comp,
     icalrecur_iterator* rrule_iterator;
     struct icaldatetimeperiodtype rdate;
     int found_dtstart = 0, found_tzoffsetto = 0, found_tzoffsetfrom = 0;
-    int has_recurrence = 0;
+    int has_rdate = 0, has_rrule = 0;
 
     /* First we check if it is a STANDARD or DAYLIGHT component, and
        just return if it isn't. */
@@ -560,8 +570,10 @@ icaltimezone_expand_vtimezone		(icalcomponent	*comp,
 	    found_tzoffsetfrom = 1;
 	    break;
 	case ICAL_RDATE_PROPERTY:
+            has_rdate = 1;
+            break;
 	case ICAL_RRULE_PROPERTY:
-	    has_recurrence = 1;
+            has_rrule = 1;
 	    break;
 	default:
 	    /* Just ignore any other properties. */
@@ -590,9 +602,9 @@ icaltimezone_expand_vtimezone		(icalcomponent	*comp,
 	    dtstart.hour, dtstart.minute, dtstart.second);
 #endif
 
-    /* If the STANDARD/DAYLIGHT component has no recurrence data, we just add
+    /* If the STANDARD/DAYLIGHT component has no recurrence rule, we add
        a single change for the DTSTART. */
-    if (!has_recurrence) {
+    if (!has_rrule) {
 	change.year   = dtstart.year;
 	change.month  = dtstart.month;
 	change.day    = dtstart.day;
@@ -611,12 +623,11 @@ icaltimezone_expand_vtimezone		(icalcomponent	*comp,
 
 	/* Add the change to the array. */
 	icalarray_append (changes, &change);
-	return;
     }
 
     /* The component has recurrence data, so we expand that now. */
     prop = icalcomponent_get_first_property (comp, ICAL_ANY_PROPERTY);
-    while (prop) {
+    while (prop && (has_rdate || has_rrule)) {
 #if 0
 	printf ("Expanding property...\n");
 #endif
@@ -672,9 +683,32 @@ icaltimezone_expand_vtimezone		(icalcomponent	*comp,
 		rrule.until.is_utc = 0;
 	    }
 
+        /* Add the dtstart to changes, otherwise some oddly-defined VTIMEZONE
+           components can cause the first year to get skipped. */
+        change.year   = dtstart.year;
+        change.month  = dtstart.month;
+        change.day    = dtstart.day;
+        change.hour   = dtstart.hour;
+        change.minute = dtstart.minute;
+        change.second = dtstart.second;
+        
+#if 0
+        printf ("  Appending RRULE element (Y/M/D): %i/%02i/%02i %i:%02i:%02i\n",
+                change.year, change.month, change.day,
+                change.hour, change.minute, change.second);
+#endif
+        
+        icaltimezone_adjust_change (&change, 0, 0, 0,
+                                    -change.prev_utc_offset);
+        
+        icalarray_append (changes, &change);
+
 	    rrule_iterator = icalrecur_iterator_new (rrule, dtstart);
 	    for (;rrule_iterator;) {
 		occ = icalrecur_iterator_next (rrule_iterator);
+		/* Skip dtstart since we just added it */
+        if (icaltime_compare(dtstart, occ) == 0)
+            continue;
 		if (occ.year > end_year || icaltime_is_null_time (occ))
 		    break;
 
@@ -836,7 +870,7 @@ icaltimezone_get_utc_offset		(icaltimezone	*zone,
     /* Sanity check. */
     icalerror_assert (change_num >= 0,
 		      "Negative timezone change index");
-    icalerror_assert (change_num < zone->changes->num_elements,
+    icalerror_assert (change_num < (int)zone->changes->num_elements,
 		      "Timezone change index out of bounds");
 
     /* Now move backwards or forwards to find the timezone change that applies
@@ -883,9 +917,12 @@ icaltimezone_get_utc_offset		(icaltimezone	*zone,
 	change_num += step;
 
 	/* If we go past the start of the changes array, then we have no data
-	   for this time so we return a UTC offset of 0. */
-	if (change_num < 0)
-	    return 0;
+	   for this time so we return the prev UTC offset. */
+	if (change_num < 0) {
+	    if (is_daylight)
+		*is_daylight = ! tmp_change.is_daylight;
+	    return tmp_change.prev_utc_offset;
+	}
 
 	if ((unsigned int)change_num >= zone->changes->num_elements)
 	    break;
@@ -987,7 +1024,7 @@ icaltimezone_get_utc_offset_of_utc_time	(icaltimezone	*zone,
     /* Sanity check. */
     icalerror_assert (change_num >= 0,
 		      "Negative timezone change index");
-    icalerror_assert (change_num < zone->changes->num_elements,
+    icalerror_assert (change_num < (int)zone->changes->num_elements,
 		      "Timezone change index out of bounds");
 
     /* Now move backwards or forwards to find the timezone change that applies
@@ -1017,10 +1054,13 @@ icaltimezone_get_utc_offset_of_utc_time	(icaltimezone	*zone,
 
 	change_num += step;
 
-	/* If we go past the start of the changes array, then we have no data
-	   for this time so we return a UTC offset of 0. */
-	if (change_num < 0)
-	    return 0;
+    /* If we go past the start of the changes array, then we have no data
+       for this time so we return the prev UTC offset. */
+    if (change_num < 0) {
+        if (is_daylight)
+        *is_daylight = ! tmp_change.is_daylight;
+        return tmp_change.prev_utc_offset;
+    }
 
 	if ((unsigned int)change_num >= zone->changes->num_elements)
 	    break;
@@ -1259,6 +1299,9 @@ icaltimezone_get_display_name		(icaltimezone	*zone)
 		   at the end of it. */
 		if (display_name
 		    && !strncmp (display_name, ical_tzid_prefix, strlen(ical_tzid_prefix))) {
+#if 0
+		    /* XXX  The code below makes assumptions about the prefix
+		       which don't even jive with our default declared up top */
 		    /* Get the location, which is after the 3rd '/' char. */
 		    const char *p;
 		    int num_slashes = 0;
@@ -1269,6 +1312,10 @@ icaltimezone_get_display_name		(icaltimezone	*zone)
 				return p + 1;
 			}
 		    }
+#else
+		    /* Skip past our prefix */
+		    display_name += strlen(ical_tzid_prefix);
+#endif
 		}
 	}
 
@@ -1354,7 +1401,7 @@ icaltimezone_get_builtin_timezone	(const char *location)
     if (!builtin_timezones)
 	icaltimezone_init_builtin_timezones ();
 
-    if (!strcmp (location, "UTC"))
+    if (strcmp (location, "UTC") == 0 || strcmp (location, "GMT") == 0)
 	return &utc_timezone;
     
 #if 0
@@ -1474,19 +1521,27 @@ icaltimezone_get_builtin_timezone_from_offset	(int offset, const char *tzname)
 icaltimezone*
 icaltimezone_get_builtin_timezone_from_tzid (const char *tzid)
 {
+#if 0
     int num_slashes = 0;
+#endif
     const char *p, *zone_tzid;
     icaltimezone *zone;
 
     if (!tzid || !tzid[0])
 	return NULL;
 
+    if (strcmp (tzid, "UTC") == 0 || strcmp (tzid, "GMT") == 0) {
+        return icaltimezone_get_builtin_timezone(tzid);
+    }
+
     /* Check that the TZID starts with our unique prefix. */
     if (strncmp (tzid, ical_tzid_prefix, strlen(ical_tzid_prefix)))
 	return NULL;
 
+#if 0
+    /* XXX  The code below makes assumptions about the prefix
+       which don't even jive with our default declared up top */
     /* Get the location, which is after the 3rd '/' character. */
-    p = tzid;
     for (p = tzid; *p; p++) {
 	if (*p == '/') {
 	    num_slashes++;
@@ -1499,6 +1554,10 @@ icaltimezone_get_builtin_timezone_from_tzid (const char *tzid)
 	return NULL;
 
     p++;
+#else
+    /* Skip past our prefix */
+    p = tzid + strlen(ical_tzid_prefix);
+#endif
 
     /* Now we can use the function to get the builtin timezone from the
        location string. */
@@ -1593,7 +1652,7 @@ fetch_lat_long_from_string  (const char *str, int *latitude_degrees, int *latitu
 		sptr++;
 	
 	loc = ++sptr;
-	while (!isspace (*sptr))
+	while (!isspace ((int)(*sptr)))
 		sptr++;
 	len = sptr - loc;
 	location = strncpy (location, loc, len);
@@ -1658,26 +1717,26 @@ icaltimezone_parse_zone_tab		(void)
 
     builtin_timezones = icalarray_new (sizeof (icaltimezone), 32);
 
-#ifndef USE_BUILTIN_TZDATA
+    if (!use_builtin_tzdata) {
     filename_len = strlen ((char *) icaltzutil_get_zone_directory()) + strlen (ZONES_TAB_SYSTEM_FILENAME)
 	+ 2;
-#else    
+    } else {
     filename_len = strlen (get_zone_directory()) + strlen (ZONES_TAB_FILENAME)
 	+ 2;
-#endif    
+    }
 
     filename = (char*) malloc (filename_len);
     if (!filename) {
 	icalerror_set_errno(ICAL_NEWFAILED_ERROR);
 	return;
     }
-#ifndef USE_BUILTIN_TZDATA
+    if (!use_builtin_tzdata) {
     snprintf (filename, filename_len, "%s/%s", icaltzutil_get_zone_directory (),
 	      ZONES_TAB_SYSTEM_FILENAME);
-#else    
+    } else {
     snprintf (filename, filename_len, "%s/%s", get_zone_directory(),
 	      ZONES_TAB_FILENAME);
-#endif    
+    }
 
     fp = fopen (filename, "r");
     free (filename);
@@ -1689,8 +1748,17 @@ icaltimezone_parse_zone_tab		(void)
     while (fgets (buf, sizeof(buf), fp)) {
 	if (*buf == '#') continue;
 
-#ifdef USE_BUILTIN_TZDATA	
-	/* The format of each line is: "latitude longitude location". */
+	if (use_builtin_tzdata) {	
+	/* The format of each line is: "[ latitude longitude ] location". */
+	if (buf[0] != '+' && buf[0] != '-') {
+	    latitude_degrees = longitude_degrees = 360;
+	    latitude_minutes = longitude_minutes =
+		latitude_seconds = longitude_seconds = 0;
+	    if (sscanf (buf, "%s", location) != 1) {
+		fprintf (stderr, "Invalid timezone description line: %s\n", buf);
+		continue;
+	    }
+	} else
 	if (sscanf (buf, "%4d%2d%2d %4d%2d%2d %s",
 		    &latitude_degrees, &latitude_minutes,
 		    &latitude_seconds,
@@ -1700,7 +1768,7 @@ icaltimezone_parse_zone_tab		(void)
 	    fprintf (stderr, "Invalid timezone description line: %s\n", buf);
 	    continue;
 	}
-#else 
+	} else {
 	if (fetch_lat_long_from_string (buf, &latitude_degrees, &latitude_minutes, 
 				&latitude_seconds,
 				&longitude_degrees, &longitude_minutes, &longitude_seconds,
@@ -1708,7 +1776,7 @@ icaltimezone_parse_zone_tab		(void)
 	    fprintf (stderr, "Invalid timezone description line: %s\n", buf);
 	    continue;
 	}
-#endif 	
+	}
 
 	icaltimezone_init (&zone);
 	zone.location = strdup (location);
@@ -1760,23 +1828,23 @@ icaltimezone_release_zone_tab		(void)
 static void
 icaltimezone_load_builtin_timezone	(icaltimezone *zone)
 {
-    icalcomponent *subcomp;
+    icalcomponent *comp, *subcomp;
 
 	    /* If the location isn't set, it isn't a builtin timezone. */
     if (!zone->location || !zone->location[0])
 	return;
 
+    /* Prevent blocking on mutex lock caused by recursive calls */
+    if (zone->component)
+       return;
+
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&builtin_mutex);
-    if (zone->component)
-       goto out;
 #endif
 
-#ifdef USE_BUILTIN_TZDATA
-    {
+    if (use_builtin_tzdata) {
     char *filename;
-    icalcomponent *comp;
-    unsigned int filename_len;
+    size_t filename_len;
     FILE *fp;
     icalparser *parser;
 
@@ -1785,7 +1853,7 @@ icaltimezone_load_builtin_timezone	(icaltimezone *zone)
     filename = (char*) malloc (filename_len);
     if (!filename) {
 	icalerror_set_errno(ICAL_NEWFAILED_ERROR);
-	return;
+	goto out;
     }
 
     snprintf (filename, filename_len, "%s/%s.ics", get_zone_directory(),
@@ -1795,7 +1863,7 @@ icaltimezone_load_builtin_timezone	(icaltimezone *zone)
     free (filename);
     if (!fp) {
 	icalerror_set_errno(ICAL_FILE_ERROR);
-	return;
+	goto out;
     }
 
 	
@@ -1813,30 +1881,30 @@ icaltimezone_load_builtin_timezone	(icaltimezone *zone)
     /* Find the VTIMEZONE component inside the VCALENDAR. There should be 1. */
     subcomp = icalcomponent_get_first_component (comp,
 						 ICAL_VTIMEZONE_COMPONENT);
-#else
+    } else {
 	subcomp = icaltzutil_fetch_timezone (zone->location);
-#endif	
+    }
 
     if (!subcomp) {
 	icalerror_set_errno(ICAL_PARSE_ERROR);
-	return;
+	goto out;
     }
 
     icaltimezone_get_vtimezone_properties (zone, subcomp);
 
-#ifdef USE_BUILTIN_TZDATA
+    if (use_builtin_tzdata) {
     icalcomponent_remove_component(comp,subcomp);
     icalcomponent_free(comp);
     }
-#endif 
-#ifdef HAVE_PTHREAD
+
  out:
+#ifdef HAVE_PTHREAD
     pthread_mutex_unlock(&builtin_mutex);
 #endif
+    return;
 }
 
 
-#ifdef USE_BUILTIN_TZDATA
 /** Callback used from icalparser_parse() */
 static char *
 icaltimezone_load_get_line_fn		(char		*s,
@@ -1845,7 +1913,6 @@ icaltimezone_load_get_line_fn		(char		*s,
 {
     return fgets (s, (int)size, (FILE*) data);
 }
-#endif
 
 
 
@@ -1886,7 +1953,6 @@ icaltimezone_dump_changes		(icaltimezone *zone,
     printf ("Num changes: %i\n", zone->changes->num_elements);
 #endif
 
-    change_num = 0;
     for (change_num = 0; (unsigned int)change_num < zone->changes->num_elements; change_num++) {
 	zone_change = icalarray_element_at (zone->changes, change_num);
 
@@ -1900,7 +1966,7 @@ icaltimezone_dump_changes		(icaltimezone *zone,
 		zone_change->hour, zone_change->minute, zone_change->second);
 
 	/* Wall Clock Time offset from UTC. */
-	format_utc_offset (zone_change->utc_offset, buffer);
+	format_utc_offset (zone_change->utc_offset, buffer, sizeof(buffer));
 	fprintf (fp, "\t%s", buffer);
 
 	fprintf (fp, "\n");
@@ -1913,7 +1979,8 @@ icaltimezone_dump_changes		(icaltimezone *zone,
    buffer should have space for 8 characters. */
 static void
 format_utc_offset			(int		 utc_offset,
-					 char		*buffer)
+					 char		*buffer,
+					 size_t		buffer_size)
 {
   const char *sign = "+";
   int hours, minutes, seconds;
@@ -1937,9 +2004,9 @@ format_utc_offset			(int		 utc_offset,
   }
 
   if (seconds == 0)
-    snprintf (buffer, sizeof(buffer), "%s%02i%02i", sign, hours, minutes);
+    snprintf (buffer, buffer_size, "%s%02i%02i", sign, hours, minutes);
   else
-    snprintf (buffer, sizeof(buffer), "%s%02i%02i%02i", sign, hours, minutes, seconds);
+    snprintf (buffer, buffer_size, "%s%02i%02i%02i", sign, hours, minutes, seconds);
 }
 
 static const char* get_zone_directory(void)
@@ -1956,7 +2023,7 @@ static const char* get_zone_directory(void)
 	int used_default;
 	static char *cache = NULL;
 #ifndef _WIN32_WCE
-	char *dirslash, *zislash;
+	unsigned char *dirslash, *zislash, *zislashp1;
 #else
 	wchar_t *dirslash, *zislash;
 #endif
@@ -2023,7 +2090,7 @@ static const char* get_zone_directory(void)
 
 	/* Strip away basename of app .exe first */
 #ifndef _WIN32_WCE
-	dirslash = _mbsrchr (buffer, '\\');
+	dirslash = _mbsrchr ((unsigned char *)buffer, '\\');
 #else
 	dirslash = wcsrchr (wbuffer, L'\\');
 #endif
@@ -2054,16 +2121,17 @@ static const char* get_zone_directory(void)
 	    }
 	}
 #else
-	while ((dirslash = _mbsrchr (buffer, '\\'))) {
+	while ((dirslash = _mbsrchr ((unsigned char *)buffer, '\\'))) {
 	    /* Strip one more directory from app .exe location */
 	    *dirslash = '\0';
 	    
 	    strcpy (zoneinfodir, ZONEINFO_DIRECTORY);
-	    while ((zislash = _mbschr (zoneinfodir, '/'))) {
+	    while ((zislash = _mbschr ((unsigned char *)zoneinfodir, '/'))) {
 		*zislash = '.';
 		strcpy (dirname, buffer);
 		strcat (dirname, "/");
-		strcat (dirname, zislash + 1);
+		zislashp1 = zislash + 1;
+		strcat (dirname, (char *)zislashp1);
 		if (stat (dirname, &st) == 0 &&
 		    S_ISDIR (st.st_mode)) {
 		    cache = strdup (dirname);
@@ -2101,4 +2169,14 @@ void icaltimezone_set_tzid_prefix(const char *new_prefix)
 	if (new_prefix) {
 		ical_tzid_prefix = new_prefix;
 	}
+}
+
+void icaltimezone_set_builtin_tzdata(int set)
+{
+	use_builtin_tzdata = set;
+}
+
+int icaltimezone_get_builtin_tzdata(void)
+{
+	return use_builtin_tzdata;
 }
