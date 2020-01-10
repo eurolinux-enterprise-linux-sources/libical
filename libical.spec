@@ -1,7 +1,7 @@
 Summary:	Reference implementation of the iCalendar data type and serialization format
 Name:		libical
 Version:	0.48
-Release:	4%{?dist}
+Release:	6%{?dist}
 License:	LGPLv2 or MPLv1.1
 Group:		System Environment/Libraries
 URL:		http://freeassociation.sourceforge.net/
@@ -69,6 +69,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_includedir}/%{name}/vobject.h
 
 %changelog
+* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 0.48-6
+- Mass rebuild 2014-01-24
+
+* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 0.48-5
+- Mass rebuild 2013-12-27
+
 * Thu Feb 14 2013 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 0.48-4
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_19_Mass_Rebuild
 
